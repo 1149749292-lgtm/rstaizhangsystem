@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>保险出单台账系统 v10</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .commission-box { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .upload-btn { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .table-row:hover { background-color: #f3f4f6; }
+        .input-field { transition: all 0.3s; border: 2px solid #e5e7eb; }
+        .input-field:focus { border-color: #3b82f6; outline: none; transform: translateY(-1px); }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .tag-oil { background: #fef3c7; color: #92400e; }
+        .tag-truck { background: #dbeafe; color: #1e40af; }
+        .tag-ev { background: #d1fae5; color: #065f46; }
+        .tag-renewal { background: #fce7f3; color: #9d174d; }
+        .stat-card { background: rgba(255,255,255,0.15); border-radius: 8px; padding: 8px; }
+        @media (max-width: 640px) { 
+            .hide-mobile { display: none; } 
+            .overflow-x-auto { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            table { min-width: 1200px; }
+            td, th { white-space: nowrap; }
+        }
+        .overflow-x-auto { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { min-width: 1200px; }
+        .upload-progress { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 24px; border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); z-index: 100;
+            display: none; text-align: center; min-width: 280px;
+        }
+        .progress-bar { width: 100%; height: 4px; background: #e5e7eb; border-radius: 2px; margin-top: 12px; overflow: hidden; }
+        .progress-fill { height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s; }
+        .total-box { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+        .ocr-debug { background: #f0f9ff; border: 1px solid #bae6fd; padding: 8px; border-radius: 6px; font-size: 11px; color: #0369a1; margin-bottom: 8px; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-24">
+    <!-- 版本: v10 | 生成时间: 2026-04-18 21:00 -->
+
+    <!-- 上传进度弹窗 -->
+    <div id="uploadProgress" class="upload-progress">
+        <div class="text-4xl mb-3">📤</div>
+        <p class="text-sm font-bold text-gray-800 mb-1" id="progressTitle">正在处理图片...</p>
+        <p class="text-xs text-gray-500" id="progressText">准备上传</p>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <button onclick="cancelUpload()" class="mt-4 text-xs text-gray-400 underline">取消</button>
+    </div>
+
+    <!-- 顶部导航 -->
+    <div class="fixed top-0 w-full bg-white shadow-md z-40 px-4 py-3 flex justify-between items-center">
+        <div>
+            <h1 class="text-lg font-bold text-gray-800">📋 出单台账系统</h1>
+            <p class="text-xs text-gray-500" id="statsOverview">本月: 0单 | 保费: ¥0 | 利润: ¥0</p>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="exportExcel()" class="bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow">
+                导出
+            </button>
+            <button onclick="openModal()" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow-lg active:scale-95 transition">
+                + 录入
+            </button>
+        </div>
+    </div>
+
+    <!-- 主要内容区 -->
+    <div class="mt-20 px-4 space-y-4">
+
+        <!-- 上传区域 - 紧凑按钮 -->
+        <div class="bg-white rounded-xl shadow-sm p-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="document.getElementById('fileInput').click()" class="upload-btn px-4 py-2 rounded-lg text-white text-sm font-bold shadow active:scale-95 transition flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    传图识别
+                </button>
+                <p class="text-xs text-gray-500">自动识别车牌、金额、日期</p>
+            </div>
+            <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+        </div>
+
+        <!-- 筛选区 -->
+        <div class="bg-white rounded-xl shadow-sm p-4">
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <select id="filterType" onchange="renderTable()" class="input-field w-full p-2 rounded-lg text-sm bg-gray-50">
+                    <option value="">所有车型</option>
+                    <option value="油车">油车</option>
+                    <option value="货车">货车</option>
+                    <option value="新能源">新能源</option>
+                </select>
+                <select id="filterMonth" onchange="renderTable()" class="input-field w-full p-2 rounded-lg text-sm bg-gray-50">
+                    <option value="">所有月份</option>
+                </select>
+            </div>
+            <input type="text" id="searchInput" placeholder="搜索车牌/车主名" oninput="renderTable()" class="input-field w-full p-2 rounded-lg text-sm bg-gray-50">
+        </div>
+
+        <!-- 数据表格 -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100 text-gray-600">
+                        <tr>
+                            <th class="p-1 text-left text-xs" style="min-width:22px">序</th>
+                            <th class="p-1 text-left text-xs" style="min-width:50px">出单</th>
+                            <th class="p-1 text-left text-xs" style="min-width:50px">起保</th>
+                            <th class="p-1 text-left text-xs" style="min-width:75px">车牌</th>
+                            <th class="p-1 text-right text-xs" style="min-width:48px">商险</th>
+                            <th class="p-1 text-right text-xs" style="min-width:48px">交强</th>
+                            <th class="p-1 text-right text-xs" style="min-width:48px">驾乘</th>
+                            <th class="p-1 text-right text-xs" style="min-width:55px">合计</th>
+                            <th class="p-1 text-right text-xs" style="min-width:45px;color:#2563eb">商前</th>
+                            <th class="p-1 text-right text-xs" style="min-width:45px;color:#16a34a">交前</th>
+                            <th class="p-1 text-right text-xs" style="min-width:45px;color:#ea580c">乘前</th>
+                            <th class="p-1 text-right text-xs" style="min-width:45px;color:#7c3aed">商后</th>
+                            <th class="p-1 text-right text-xs" style="min-width:42px">返佣</th>
+                            <th class="p-1 text-right text-xs" style="min-width:42px">利润</th>
+                            <th class="p-1 text-center text-xs" style="min-width:40px">操作</th>
+                            <th class="p-1 text-left text-xs" style="min-width:35px">备注</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-gray-100">
+                    </tbody>
+            </div>
+            <div id="emptyState" class="p-8 text-center text-gray-400 text-sm hidden">
+                暂无数据，请从相册上传出单图片或手动录入
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- 录入/编辑弹窗 -->
+    <div id="modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white w-full sm:rounded-2xl rounded-t-2xl max-w-lg max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b px-4 py-3 flex justify-between items-center z-10">
+                <h3 class="font-bold text-lg" id="modalTitle">登记出单</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+
+            <form id="entryForm" onsubmit="saveRecord(event)" class="p-4 space-y-4">
+                <!-- 识别结果提示 -->
+                <div id="ocrResultMsg" class="ocr-debug hidden">
+                    <span id="ocrMsgText">识别结果：</span>
+                </div>
+
+                <input type="hidden" id="editId">
+
+                <!-- 保费合计显示 -->
+                <div class="total-box flex justify-between items-center">
+                    <div>
+                        <p class="text-xs opacity-90">保费合计</p>
+                        <p class="text-xs opacity-75">商业+交强+驾乘+车船税</p>
+                    </div>
+                    <p class="text-2xl font-bold" id="formTotalPremium">¥0.00</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">车牌号码</label>
+                        <input type="text" id="plate" required class="input-field w-full p-2 rounded-lg text-sm uppercase" placeholder="粤A12345">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">车主姓名</label>
+                        <input type="text" id="owner" class="input-field w-full p-2 rounded-lg text-sm" placeholder="车主名">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">车型分类</label>
+                        <select id="vehicleType" onchange="updateCommissionConfig()" class="input-field w-full p-2 rounded-lg text-sm bg-white">
+                            <option value="油车">油车</option>
+                            <option value="货车">货车</option>
+                            <option value="新能源">新能源</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">是否续保</label>
+                        <select id="isRenewal" onchange="updateCommissionConfig()" class="input-field w-full p-2 rounded-lg text-sm bg-white">
+                            <option value="0">新保</option>
+                            <option value="1">续保</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">出单日期</label>
+                        <input type="date" id="orderDate" required class="input-field w-full p-2 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 mb-1">起保日期</label>
+                        <input type="date" id="startDate" class="input-field w-full p-2 rounded-lg text-sm">
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 p-3 rounded-lg space-y-2">
+                    <h4 class="text-xs font-bold text-gray-700 mb-2">保费明细 (含税)</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">商业险</label>
+                            <input type="number" id="commercial" step="0.01" onchange="calculateAll()" class="input-field w-full p-2 rounded text-sm" placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">交强险</label>
+                            <input type="number" id="compulsory" step="0.01" onchange="calculateAll()" class="input-field w-full p-2 rounded text-sm" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">驾乘险</label>
+                            <input type="number" id="passenger" step="0.01" onchange="calculateAll()" class="input-field w-full p-2 rounded text-sm" placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">车船税</label>
+                            <input type="number" id="tax" step="0.01" onchange="calculateAll()" class="input-field w-full p-2 rounded text-sm" placeholder="0.00">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 p-3 rounded-lg space-y-2">
+                    <h4 class="text-xs font-bold text-blue-800 mb-2">佣金点位配置 (%)</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-blue-600 mb-1">商业险前端 (默认12%)</label>
+                            <input type="number" id="commFrontPct" value="12" step="0.1" onchange="calculateAll()" class="input-field w-full p-2 rounded text-sm bg-white border-blue-200">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-blue-600 mb-1">商业险总点数</label>
+                            <input type="number" id="commTotalPct" value="30" step="0.1" onchange="calculateAll()" class="input-field w-full p-2 rounded text-sm bg-white border-blue-200">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-orange-50 p-3 rounded-lg space-y-2">
+                    <h4 class="text-xs font-bold text-orange-800 mb-2">返佣与利润</h4>
+                    <div>
+                        <label class="block text-xs text-orange-600 mb-1">返佣金额</label>
+                        <input type="number" id="rebate" value="0" step="0.01" onchange="calculateAll()" class="input-field w-full p-2 rounded text-sm bg-white border-orange-200" placeholder="0.00">
+                    </div>
+                </div>
+
+                <div class="bg-yellow-50 border border-yellow-200 p-3 rounded-lg space-y-1 text-xs">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">合计保费:</span>
+                        <span class="font-bold text-gray-800" id="previewTotal">¥0.00</span>
+                    </div>
+                    <div class="flex justify-between border-b border-yellow-200 pb-1">
+                        <span class="text-gray-600">不含税保费:</span>
+                        <span class="font-bold text-gray-800" id="previewNet">¥0.00</span>
+                    </div>
+                    <div class="pt-1 space-y-1">
+                        <div class="flex justify-between text-blue-700">
+                            <span>商业险前端(÷1.06×<span id="dispFrontPct">12</span>%):</span>
+                            <span id="previewCommFront">¥0.00</span>
+                        </div>
+                        <div class="flex justify-between text-purple-700">
+                            <span>商业险后端(总<span id="dispTotalPct">30</span>%-前端,扣6%):</span>
+                            <span id="previewCommBack">¥0.00</span>
+                        </div>
+                        <div class="flex justify-between text-green-700">
+                            <span>交强险前端(÷1.06×4%):</span>
+                            <span id="previewCompulsory">¥0.00</span>
+                        </div>
+                        <div class="flex justify-between text-orange-700">
+                            <span>驾乘险前端(÷1.06×35%):</span>
+                            <span id="previewPassenger">¥0.00</span>
+                        </div>
+                        <div class="flex justify-between text-gray-600 mt-1 pt-1 border-t border-yellow-200">
+                            <span>返佣金额:</span>
+                            <span id="previewRebate">¥0.00</span>
+                        </div>
+                        <div class="flex justify-between font-bold text-green-700 text-sm">
+                            <span>利润(前端+后端-返佣):</span>
+                            <span id="previewProfit">¥0.00</span>
+                        </div>
+                        <div class="flex justify-between font-bold text-red-600 text-sm pt-1 border-t border-yellow-200">
+                            <span>佣金合计:</span>
+                            <span id="previewTotalComm">¥0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">备注</label>
+                    <input type="text" id="remark" class="input-field w-full p-2 rounded-lg text-sm" placeholder="添加备注信息（可选）">
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold shadow-lg active:scale-95 transition">
+                    保存登记
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let records = JSON.parse(localStorage.getItem('insuranceRecords') || '[]');
+        let currentEditId = null;
+        let abortController = null;
+        let lastOCRText = '';
+
+        const OCR_API_KEY = 'helloworld';
+
+        function initMonthFilter() {
+            const select = document.getElementById('filterMonth');
+            const months = new Set();
+            records.forEach(r => {
+                if (r.orderDate) months.add(r.orderDate.substring(0, 7));
+            });
+            for (let i = 0; i < 6; i++) {
+                const d = new Date();
+                d.setMonth(d.getMonth() - i);
+                const m = d.toISOString().substring(0, 7);
+                months.add(m);
+            }
+            Array.from(months).sort().reverse().forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                select.appendChild(opt);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initMonthFilter();
+            renderTable();
+            updateStats();
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('orderDate').value = today;
+            document.getElementById('currentMonthLabel').textContent = today.substring(0, 7);
+        });
+
+        function cancelUpload() {
+            if (abortController) abortController.abort();
+            hideProgress();
+        }
+
+        function showProgress(title, text, percent = 0) {
+            const modal = document.getElementById('uploadProgress');
+            document.getElementById('progressTitle').textContent = title;
+            document.getElementById('progressText').textContent = text;
+            document.getElementById('progressFill').style.width = percent + '%';
+            modal.style.display = 'block';
+        }
+
+        function hideProgress() {
+            document.getElementById('uploadProgress').style.display = 'none';
+        }
+
+        function updateProgress(text, percent) {
+            document.getElementById('progressText').textContent = text;
+            document.getElementById('progressFill').style.width = percent + '%';
+        }
+
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            event.target.value = '';
+            showProgress('正在处理图片...', '准备上传', 10);
+            abortController = new AbortController();
+
+            try {
+                updateProgress('上传到识别服务器...', 40);
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('apikey', OCR_API_KEY);
+                formData.append('language', 'chs');
+                formData.append('isTable', 'true');
+                formData.append('OCREngine', '2');
+                formData.append('detectOrientation', 'true');
+
+                updateProgress('识别中...', 70);
+
+                const response = await fetch('https://api.ocr.space/parse/image', {
+                    method: 'POST',
+                    body: formData,
+                    signal: abortController.signal
+                });
+
+                updateProgress('解析结果...', 90);
+
+                if (!response.ok) throw new Error('网络请求失败');
+
+                const data = await response.json();
+                if (data.OCRExitCode !== 1 || !data.ParsedResults || data.ParsedResults.length === 0) {
+                    throw new Error(data.ErrorMessage || '识别失败');
+                }
+
+                const text = data.ParsedResults[0].ParsedText;
+                lastOCRText = text;
+                console.log('OCR识别结果:', text);
+
+                const parsed = parseOCRText(text);
+                showOCRResult(parsed);
+                fillForm(parsed);
+
+                hideProgress();
+                openModal();
+
+            } catch (error) {
+                console.error('OCR错误:', error);
+                hideProgress();
+
+                if (error.name === 'AbortError') return;
+
+                alert('识别失败（' + error.message + '），请手动录入');
+                openModal();
+            }
+        }
+
+        function showOCRResult(data) {
+            const msgDiv = document.getElementById('ocrResultMsg');
+            const msgText = document.getElementById('ocrMsgText');
+
+            let parts = [];
+            if (data.plate) parts.push('车牌:' + data.plate);
+            if (data.owner && data.owner !== '车主' && data.owner !== '姓名') parts.push('车主:' + data.owner);
+
+            // 显示所有险种识别结果（包括为0的，方便排查）
+            parts.push('商:' + (data.commercial || '未识别'));
+            parts.push('交:' + (data.compulsory || '未识别'));
+            parts.push('驾:' + (data.passenger || '未识别'));
+            parts.push('税:' + (data.tax || '未识别'));
+
+            if (data.startDate) parts.push('起保:' + data.startDate);
+            if (data.orderDate) parts.push('出单:' + data.orderDate);
+
+            msgText.textContent = '识别结果：' + parts.join(' | ');
+            msgDiv.classList.remove('hidden');
+        }
+
+        // 从行文本中提取保费金额（带¥符号或金额列）- 增强版
+        function extractPremium(line) {
+            // 方法1：匹配 ¥xxx.xx 或 ￥xxx.xx 格式（最可靠）
+            const yenMatch = line.match(/[¥￥]\s*(\d+\.?\d{0,2})/);
+            if (yenMatch) {
+                const val = parseFloat(yenMatch[1]);
+                if (val >= 10 && val < 50000) return val;
+            }
+
+            // 方法2：匹配 "保费" 或 "金额" 后面的数字
+            const premiumMatch = line.match(/(?:保费|金额)[（(元)）]*[：:\s]*(\d+\.?\d{0,2})/);
+            if (premiumMatch) {
+                const val = parseFloat(premiumMatch[1]);
+                if (val >= 10 && val < 50000) return val;
+            }
+
+            // 方法3：匹配 xxx.xx 元 格式
+            const yuanMatch = line.match(/(\d+\.?\d{0,2})\s*元/);
+            if (yuanMatch) {
+                const val = parseFloat(yuanMatch[1]);
+                if (val >= 10 && val < 50000) return val;
+            }
+
+            // 方法4：匹配 ¥ xxx.xx 格式（中间有空格）
+            const spaceYenMatch = line.match(/[¥￥]\s+(\d+\.?\d{0,2})/);
+            if (spaceYenMatch) {
+                const val = parseFloat(spaceYenMatch[1]);
+                if (val >= 10 && val < 50000) return val;
+            }
+
+            // 方法5：行尾的数字（通常是金额）
+            const nums = line.match(/\d+\.?\d{0,2}/g);
+            if (nums && nums.length > 0) {
+                // 从后往前找第一个合理的金额
+                for (let i = nums.length - 1; i >= 0; i--) {
+                    const n = parseFloat(nums[i]);
+                    // 排除保额数字（带"万"字的行中大于100的数字）
+                    if (line.includes('万') && n >= 100) continue;
+                    // 排除年份
+                    if (n > 2020 && n < 2030) continue;
+                    // 排除序号、small numbers
+                    if (n < 10) continue;
+                    // 排除过大的数字（可能是保额或错误）
+                    if (n > 50000) continue;
+                    return n;
+                }
+            }
+
+            return 0;
+        }
+
+        function parseOCRText(text) {
+            const data = { plate: '', owner: '', commercial: 0, compulsory: 0, passenger: 0, tax: 0, orderDate: '', startDate: '' };
+
+            // 统一处理：去除多余空格，但保留关键结构
+            const cleanText = text.replace(/\s+/g, ' ').trim();
+            const lines = text.split(/\n/);
+
+            // ===== 1. 车牌识别 =====
+            // 匹配标准车牌：省份简称+字母+5-6位字母数字
+            const plateMatch = cleanText.match(/([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-HJ-NP-Z0-9]{4,6})/);
+            if (plateMatch && plateMatch[1]) {
+                const candidate = plateMatch[1];
+                if (candidate.length >= 6 && candidate.length <= 8) {
+                    data.plate = candidate;
+                }
+            }
+
+            // ===== 2. 车主识别 =====
+            const ownerMatch = text.match(/车主姓名[:：\s]+([*\u4e00-\u9fa5]{1,4})/);
+            if (ownerMatch) {
+                data.owner = ownerMatch[1];
+            }
+
+            // ===== 3. 保费识别 - 关键词精准匹配（不依赖顺序） =====
+            // 支持 ¥ 和 ￥ 两种符号，支持整数和小数
+            const yenPattern = '[¥￥]';
+            const numPattern = '\d+(?:\.\d{1,2})?';
+
+            // 3.1 交强险：匹配"交强险"后面的金额
+            const compPatterns = [
+                /交强险(?:保险|保费)?[:：\s]+¥\s*(\d+(?:\.\d{1,2})?)/,
+                /交强险.*?¥\s*(\d+(?:\.\d{1,2})?)/,
+                new RegExp('交强险[:：\\s]*' + yenPattern + '\\s*(' + numPattern + ')')
+            ];
+            for (let p of compPatterns) {
+                const m = text.match(p);
+                if (m && m[1]) {
+                    const val = parseFloat(m[1]);
+                    if (val > 600 && val < 2000) { data.compulsory = val; break; }
+                }
+            }
+
+            // 3.2 车船税：匹配"车船税"后面的金额
+            const taxPatterns = [
+                /车船税[:：\s]+¥\s*(\d+(?:\.\d{1,2})?)/,
+                new RegExp('车船税[:：\\s]*' + yenPattern + '\\s*(' + numPattern + ')')
+            ];
+            for (let p of taxPatterns) {
+                const m = text.match(p);
+                if (m && m[1]) {
+                    const val = parseFloat(m[1]);
+                    if (val >= 0 && val < 5000) { data.tax = val; break; }
+                }
+            }
+
+            // 3.3 商业险：【关键修复】直接匹配"商业险"关键词后面的金额
+            // 先尝试匹配"商业险 ¥xxx" 格式
+            const commPatterns = [
+                /商业险[:：\s]+¥\s*(\d+(?:\.\d{1,2})?)/,
+                /商业险.*?¥\s*(\d+(?:\.\d{1,2})?)/,
+                new RegExp('商业险[:：\\s]*' + yenPattern + '\\s*(' + numPattern + ')')
+            ];
+            for (let p of commPatterns) {
+                const m = text.match(p);
+                if (m && m[1]) {
+                    const val = parseFloat(m[1]);
+                    if (val > 100) { data.commercial = val; break; }
+                }
+            }
+
+            // 如果上面没匹配到，尝试从"车险商业险"独立标题行匹配
+            if (!data.commercial) {
+                const commLine = lines.find(l => l.includes('车险商业险') && l.match(/[¥￥]\s*\d/));
+                if (commLine) {
+                    const m = commLine.match(/[¥￥]\s*(\d+(?:\.\d{1,2})?)/);
+                    if (m && m[1]) {
+                        const val = parseFloat(m[1]);
+                        if (val > 100) data.commercial = val;
+                    }
+                }
+            }
+
+            // 3.4 驾乘险/其它保障：匹配"驾乘"、"其它保障"、"其他保障"后面的金额
+            const passPatterns = [
+                /(?:驾乘无忧|其它保障|其他保障|驾乘险)[:：\s]+¥\s*(\d+(?:\.\d{1,2})?)/,
+                /(?:驾乘无忧|其它保障|其他保障).*?¥\s*(\d+(?:\.\d{1,2})?)/,
+                new RegExp('(?:驾乘|其它保障|其他保障)[^¥￥]*' + yenPattern + '\\s*(' + numPattern + ')')
+            ];
+            for (let p of passPatterns) {
+                const m = text.match(p);
+                if (m && m[1]) {
+                    const val = parseFloat(m[1]);
+                    if (val >= 50 && val <= 2000) { data.passenger = val; break; }
+                }
+            }
+
+            // 备选：按顺序从"保费明细"行提取（兼容旧格式）
+            let premiumLine = '';
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes('保费明细')) {
+                    // 检查当前行是否包含完整数据
+                    if (lines[i].match(/交强险.*车船税.*商业险/)) {
+                        premiumLine = lines[i];
+                        break;
+                    }
+                    // 检查下一行
+                    if (i + 1 < lines.length && lines[i + 1].includes('交强险')) {
+                        premiumLine = lines[i + 1];
+                        break;
+                    }
+                }
+                if (lines[i].match(/交强险.*\+.*车船税/)) {
+                    premiumLine = lines[i];
+                    break;
+                }
+            }
+
+            if (premiumLine && !data.commercial) {
+                // 如果前面的关键词匹配没找到商业险，尝试从保费明细行按顺序提取
+                const amounts = premiumLine.match(/[¥￥]\s*(\d+(?:\.\d{1,2})?)/g);
+                if (amounts && amounts.length >= 3) {
+                    const vals = amounts.map(a => parseFloat(a.replace(/[¥￥\s]/g, '')));
+                    // 尝试识别哪个是商业险（通常是第3个，排除交强险和车船税范围）
+                    for (let v of vals) {
+                        if (v > 500 && v !== data.compulsory && v !== data.tax && !data.commercial) {
+                            data.commercial = v; // 简化的推断
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // ===== 4. 日期识别 =====
+            // 起保日期
+            const startMatch = text.match(/(?:交强险|商业险)保险期间[:：\s]*(\d{4})[./](\d{1,2})[./](\d{1,2})/);
+            if (startMatch) {
+                data.startDate = `${startMatch[1]}-${startMatch[2].padStart(2,'0')}-${startMatch[3].padStart(2,'0')}`;
+            }
+
+            // 出单日期（算价时间）
+            const orderMatch = text.match(/算价时间[:：\s]*(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+            if (orderMatch) {
+                data.orderDate = `${orderMatch[1]}-${orderMatch[2].padStart(2,'0')}-${orderMatch[3].padStart(2,'0')}`;
+            }
+
+            console.log('OCR解析结果:', JSON.stringify(data));
+            return data;
+        }
+
+        function fillForm(data) {
+            if (data.plate) {
+                document.getElementById('plate').value = data.plate.toUpperCase();
+                document.getElementById('plate').style.backgroundColor = '#f0fdf4';
+                setTimeout(() => document.getElementById('plate').style.backgroundColor = '', 1500);
+            }
+            if (data.owner && data.owner !== '车主' && data.owner !== '姓名') {
+                document.getElementById('owner').value = data.owner;
+                document.getElementById('owner').style.backgroundColor = '#f0fdf4';
+                setTimeout(() => document.getElementById('owner').style.backgroundColor = '', 1500);
+            }
+            // 关键修复：只要值大于0就填充，包括商业险
+            if (data.commercial > 0) {
+                document.getElementById('commercial').value = data.commercial;
+                document.getElementById('commercial').style.backgroundColor = '#f0fdf4';
+                setTimeout(() => document.getElementById('commercial').style.backgroundColor = '', 1500);
+            }
+            if (data.compulsory > 0) {
+                document.getElementById('compulsory').value = data.compulsory;
+                document.getElementById('compulsory').style.backgroundColor = '#f0fdf4';
+                setTimeout(() => document.getElementById('compulsory').style.backgroundColor = '', 1500);
+            }
+            if (data.passenger > 0) {
+                document.getElementById('passenger').value = data.passenger;
+                document.getElementById('passenger').style.backgroundColor = '#f0fdf4';
+                setTimeout(() => document.getElementById('passenger').style.backgroundColor = '', 1500);
+            }
+            if (data.tax > 0) {
+                document.getElementById('tax').value = data.tax;
+                document.getElementById('tax').style.backgroundColor = '#f0fdf4';
+                setTimeout(() => document.getElementById('tax').style.backgroundColor = '', 1500);
+            }
+            // 日期处理：起保日期和出单日期分开
+            if (data.startDate) {
+                document.getElementById('startDate').value = data.startDate;
+                document.getElementById('startDate').style.backgroundColor = '#f0fdf4';
+                setTimeout(() => document.getElementById('startDate').style.backgroundColor = '', 1500);
+            }
+            if (data.orderDate) {
+                document.getElementById('orderDate').value = data.orderDate;
+                document.getElementById('orderDate').style.backgroundColor = '#f0fdf4';
+                setTimeout(() => document.getElementById('orderDate').style.backgroundColor = '', 1500);
+            }
+            calculateAll();
+        }
+
+        function calculateAll() {
+            const commercial = parseFloat(document.getElementById('commercial').value) || 0;
+            const compulsory = parseFloat(document.getElementById('compulsory').value) || 0;
+            const passenger = parseFloat(document.getElementById('passenger').value) || 0;
+            const tax = parseFloat(document.getElementById('tax').value) || 0;
+
+            const netPremium = (commercial + compulsory + passenger) / 1.06;
+            const totalPremium = commercial + compulsory + passenger + tax;
+
+            document.getElementById('formTotalPremium').textContent = '¥' + totalPremium.toFixed(2);
+            document.getElementById('previewTotal').textContent = '¥' + totalPremium.toFixed(2);
+            document.getElementById('previewNet').textContent = '¥' + netPremium.toFixed(2);
+            calculateCommission();
+        }
+
+        function calculateCommission() {
+            const vehicleType = document.getElementById('vehicleType').value;
+            const isRenewal = document.getElementById('isRenewal').value === '1';
+            const commercial = parseFloat(document.getElementById('commercial').value) || 0;
+            const compulsory = parseFloat(document.getElementById('compulsory').value) || 0;
+            const passenger = parseFloat(document.getElementById('passenger').value) || 0;
+            const rebate = parseFloat(document.getElementById('rebate').value) || 0;
+
+            const frontPct = parseFloat(document.getElementById('commFrontPct').value) || 12;
+            const totalPct = parseFloat(document.getElementById('commTotalPct').value) || 30;
+
+            document.getElementById('dispFrontPct').textContent = frontPct;
+            document.getElementById('dispTotalPct').textContent = totalPct;
+
+            // 计算各险种净保费
+            const netCommercial = commercial / 1.06;
+            const netCompulsory = compulsory / 1.06;
+            const netPassenger = passenger / 1.06;
+
+            // 商业险佣金：前端+后端
+            const commFront = netCommercial * (frontPct / 100);
+            const backPct = totalPct - frontPct;
+            const commBack = netCommercial * (backPct / 100) * 0.94;
+
+            // 交强险佣金：只有前端（4%或2%）
+            let commCompulsory = netCompulsory * 0.04;
+            if (isRenewal || vehicleType === '货车') {
+                commCompulsory = netCompulsory * 0.02;
+            }
+
+            // 驾乘险佣金：只有前端（35%）
+            const commPassenger = netPassenger * 0.35;
+
+            // 汇总
+            const totalFront = commFront + commCompulsory + commPassenger;
+            const totalComm = totalFront + commBack;
+            const profit = totalComm - rebate;
+
+            // 更新预览显示
+            document.getElementById('previewCommFront').textContent = '¥' + commFront.toFixed(2);
+            document.getElementById('previewCommBack').textContent = '¥' + commBack.toFixed(2);
+            document.getElementById('previewCompulsory').textContent = '¥' + commCompulsory.toFixed(2);
+            document.getElementById('previewPassenger').textContent = '¥' + commPassenger.toFixed(2);
+            document.getElementById('previewRebate').textContent = '¥' + rebate.toFixed(2);
+            document.getElementById('previewProfit').textContent = '¥' + profit.toFixed(2);
+            document.getElementById('previewTotalComm').textContent = '¥' + totalComm.toFixed(2);
+
+            // 返回细分佣金结构
+            return { 
+                front: commFront,           // 商业险前端
+                back: commBack,             // 商业险后端
+                compulsory: commCompulsory, // 交强险前端
+                passenger: commPassenger, // 驾乘险前端
+                total: totalComm,
+                totalFront: totalFront,
+                rebate: rebate, 
+                profit: profit 
+            };
+        }
+
+        function updateCommissionConfig() {
+            calculateAll();
+        }
+
+        function saveRecord(e) {
+            e.preventDefault();
+            const id = currentEditId || Date.now();
+            const commission = calculateCommission();
+
+            const commercial = parseFloat(document.getElementById('commercial').value) || 0;
+            const compulsory = parseFloat(document.getElementById('compulsory').value) || 0;
+            const passenger = parseFloat(document.getElementById('passenger').value) || 0;
+            const tax = parseFloat(document.getElementById('tax').value) || 0;
+
+            const record = {
+                id: id,
+                seq: currentEditId ? records.find(r => r.id === currentEditId).seq : records.length + 1,
+                plate: document.getElementById('plate').value.toUpperCase(),
+                owner: document.getElementById('owner').value,
+                vehicleType: document.getElementById('vehicleType').value,
+                isRenewal: document.getElementById('isRenewal').value === '1',
+                orderDate: document.getElementById('orderDate').value,
+                startDate: document.getElementById('startDate').value,
+                commercial: commercial,
+                compulsory: compulsory,
+                passenger: passenger,
+                tax: tax,
+                frontPct: parseFloat(document.getElementById('commFrontPct').value) || 12,
+                totalPct: parseFloat(document.getElementById('commTotalPct').value) || 30,
+                commission: commission,
+                totalPremium: commercial + compulsory + passenger + tax,
+                netPremium: (commercial + compulsory + passenger) / 1.06,
+                rebate: parseFloat(document.getElementById('rebate').value) || 0,
+                profit: commission.profit,
+                remark: document.getElementById('remark').value,
+                createTime: new Date().toISOString()
+            };
+
+            if (currentEditId) {
+                const idx = records.findIndex(r => r.id === currentEditId);
+                records[idx] = record;
+            } else {
+                records.unshift(record);
+            }
+
+            localStorage.setItem('insuranceRecords', JSON.stringify(records));
+            closeModal();
+            renderTable();
+            updateStats();
+            document.getElementById('entryForm').reset();
+            document.getElementById('ocrResultMsg').classList.add('hidden');
+            currentEditId = null;
+            calculateAll();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            const empty = document.getElementById('emptyState');
+            const filterType = document.getElementById('filterType').value;
+            const filterMonth = document.getElementById('filterMonth').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+
+            let filtered = records.filter(r => {
+                const matchType = !filterType || r.vehicleType === filterType;
+                const matchMonth = !filterMonth || (r.orderDate && r.orderDate.startsWith(filterMonth));
+                const matchSearch = !search || (r.plate && r.plate.toLowerCase().includes(search)) || 
+                                   (r.owner && r.owner.toLowerCase().includes(search));
+                return matchType && matchMonth && matchSearch;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+
+            empty.classList.add('hidden');
+
+            // 计算合计
+            let sumComm = 0, sumComp = 0, sumPass = 0, sumTotal = 0, sumTax = 0;
+            let sumFront = 0, sumCompFront = 0, sumPassFront = 0, sumBack = 0;
+            let sumRebate = 0, sumProfit = 0;
+            let sumCommNet = 0, sumCompNet = 0, sumPassNet = 0;
+
+            filtered.forEach(r => {
+                sumComm += r.commercial || 0;
+                sumComp += r.compulsory || 0;
+                sumPass += r.passenger || 0;
+                sumTax += r.tax || 0;
+                sumTotal += (r.commercial || 0) + (r.compulsory || 0) + (r.passenger || 0) + (r.tax || 0);
+                // 佣金细分汇总
+                sumFront += r.commission && r.commission.front ? r.commission.front : 0;
+                sumCompFront += r.commission && r.commission.compulsory ? r.commission.compulsory : 0;
+                sumPassFront += r.commission && r.commission.passenger ? r.commission.passenger : 0;
+                sumBack += r.commission && r.commission.back ? r.commission.back : 0;
+                sumRebate += r.rebate || 0;
+                const profit = (r.commission && r.commission.front ? r.commission.front : 0) + 
+                              (r.commission && r.commission.compulsory ? r.commission.compulsory : 0) + 
+                              (r.commission && r.commission.passenger ? r.commission.passenger : 0) + 
+                              (r.commission && r.commission.back ? r.commission.back : 0) - (r.rebate || 0);
+                sumProfit += profit;
+                // 净保费累计
+                sumCommNet += r.commercial ? (r.commercial / 1.06) : 0;
+                sumCompNet += r.compulsory ? (r.compulsory / 1.06) : 0;
+                sumPassNet += r.passenger ? (r.passenger / 1.06) : 0;
+            });
+
+            tbody.innerHTML = filtered.map(r => {
+                const tagClass = r.vehicleType === '油车' ? 'tag-oil' : r.vehicleType === '货车' ? 'tag-truck' : 'tag-ev';
+                const renewalTag = r.isRenewal ? '<span class="tag tag-renewal ml-1">续</span>' : '';
+
+                const commFront = r.commission && r.commission.front ? r.commission.front : 0;
+                const commBack = r.commission && r.commission.back ? r.commission.back : 0;
+                const rebate = r.rebate || 0;
+                const profit = commFront + commBack - rebate;
+
+                const commNet = r.commercial ? (r.commercial / 1.06) : 0;
+                const compNet = r.compulsory ? (r.compulsory / 1.06) : 0;
+                const passNet = r.passenger ? (r.passenger / 1.06) : 0;
+                const total = (r.commercial || 0) + (r.compulsory || 0) + (r.passenger || 0) + (r.tax || 0);
+
+                return `
+                <tr class="table-row border-b border-gray-50 text-xs">
+                    <td class="p-1 font-medium">${r.seq}</td>
+                    <td class="p-1 text-gray-600">${r.orderDate ? r.orderDate.substring(5) : '-'}</td>
+                    <td class="p-1 text-gray-600">${r.startDate ? r.startDate.substring(5) : '-'}</td>
+                    <td class="p-1">
+                        <div class="font-bold text-gray-800 text-xs">${r.plate}</div>
+                        <div class="text-xs text-gray-500">${r.owner || '-'}</div>
+                        <div class="mt-1"><span class="tag ${tagClass}">${r.vehicleType}</span>${renewalTag}</div>
+                    </td>
+                    <td class="p-1 text-right text-gray-800">${r.commercial ? parseFloat(r.commercial).toString() : '0'}</td>
+                    <td class="p-1 text-right text-gray-800">${r.compulsory ? parseFloat(r.compulsory).toString() : '0'}</td>
+                    <td class="p-1 text-right text-gray-800">${r.tax ? parseFloat(r.tax).toString() : '0'}</td>
+                    <td class="p-1 text-right text-gray-800">${r.passenger ? parseFloat(r.passenger).toString() : '0'}</td>
+                    <td class="p-1 text-right font-bold text-gray-800">${total.toFixed(2)}</td>
+                    <td class="p-1 text-right text-gray-600">${commNet.toFixed(2)}</td>
+                    <td class="p-1 text-right text-gray-600">${compNet.toFixed(2)}</td>
+                    <td class="p-1 text-right text-gray-600">${passNet.toFixed(2)}</td>
+                    <td class="p-1 text-right text-blue-600">${commFront.toFixed(2)}</td>
+                    <td class="p-1 text-right text-purple-600">${commBack.toFixed(2)}</td>
+                    <td class="p-1 text-right text-orange-600">${rebate.toFixed(2)}</td>
+                    <td class="p-1 text-right font-bold text-green-600">${profit.toFixed(2)}</td>
+                    <td class="p-1 text-center">
+                        <button onclick="editRecord(${r.id})" class="text-blue-600 text-xs">编</button>
+                        <button onclick="deleteRecord(${r.id})" class="text-red-500 text-xs">删</button>
+                    </td>
+                    <td class="p-1 text-gray-500">${r.remark || ''}</td>
+                </tr>
+                `;
+            }).join('') + `
+                <tr class="bg-gray-100 font-bold text-xs border-t-2 border-gray-300">
+                    <td class="p-1" colspan="4">合计 (${filtered.length}单)</td>
+                    <td class="p-1 text-right">${sumComm.toFixed(0)}</td>
+                    <td class="p-1 text-right">${sumComp.toFixed(0)}</td>
+                    <td class="p-1 text-right">${sumTax.toFixed(0)}</td>
+                    <td class="p-1 text-right">${sumPass.toFixed(0)}</td>
+                    <td class="p-1 text-right">${sumTotal.toFixed(2)}</td>
+                    <td class="p-1 text-right">${sumCommNet.toFixed(2)}</td>
+                    <td class="p-1 text-right">${sumCompNet.toFixed(2)}</td>
+                    <td class="p-1 text-right">${sumPassNet.toFixed(2)}</td>
+                    <td class="p-1 text-right text-blue-700">${sumFront.toFixed(2)}</td>
+                    <td class="p-1 text-right text-purple-700">${sumBack.toFixed(2)}</td>
+                    <td class="p-1 text-right text-orange-700">${sumRebate.toFixed(2)}</td>
+                    <td class="p-1 text-right text-green-700">${sumProfit.toFixed(2)}</td>
+                    <td class="p-1"></td>
+                    <td class="p-1"></td>
+                </tr>
+            `;
+        }
+
+        function updateStats() {
+            const currentMonth = new Date().toISOString().substring(0, 7);
+            const monthRecords = records.filter(r => r.orderDate && r.orderDate.startsWith(currentMonth));
+
+            let totalNetPremium = 0;
+            let totalFront = 0;
+            let totalBack = 0;
+            let totalCommission = 0;
+
+            monthRecords.forEach(r => {
+                totalNetPremium += r.netPremium;
+                totalFront += r.commission.front;
+                totalBack += r.commission.back;
+                totalCommission += r.commission.total;
+            });
+
+            const sumComm = monthRecords.reduce((sum, r) => sum + r.commercial, 0);
+            const sumComp = monthRecords.reduce((sum, r) => sum + r.compulsory, 0);
+            const sumPass = monthRecords.reduce((sum, r) => sum + r.passenger, 0);
+
+            document.getElementById('recordCount').textContent = monthRecords.length + '单';
+            document.getElementById('totalNetPremium').textContent = '¥' + totalNetPremium.toFixed(2);
+            document.getElementById('totalFrontComm').textContent = '¥' + totalFront.toFixed(2);
+            document.getElementById('totalBackComm').textContent = '¥' + totalBack.toFixed(2);
+            document.getElementById('totalCommission').textContent = '¥' + totalCommission.toFixed(2);
+
+            // 各险种总保费汇总
+            document.getElementById('sumCommercialPremium').textContent = '¥' + sumComm.toFixed(0);
+            document.getElementById('sumCompulsoryPremium').textContent = '¥' + sumComp.toFixed(0);
+            document.getElementById('sumPassengerPremium').textContent = '¥' + sumPass.toFixed(0);
+
+            document.getElementById('statsOverview').textContent = 
+                `本月: ${monthRecords.length}单 | 保费: ¥${(totalNetPremium * 1.06).toFixed(0)} | 佣金: ¥${totalCommission.toFixed(0)}`;
+            document.getElementById('sumCommercial').textContent = sumComm.toString();
+            document.getElementById('sumCompulsory').textContent = sumComp.toString();
+            document.getElementById('sumPassenger').textContent = sumPass.toString();
+            document.getElementById('currentMonthLabel').textContent = currentMonth;
+        }
+
+        function editRecord(id) {
+            const r = records.find(x => x.id === id);
+            if (!r) return;
+
+            currentEditId = id;
+            document.getElementById('modalTitle').textContent = '编辑出单';
+            document.getElementById('ocrResultMsg').classList.add('hidden');
+
+            document.getElementById('plate').value = r.plate;
+            document.getElementById('owner').value = r.owner;
+            document.getElementById('vehicleType').value = r.vehicleType;
+            document.getElementById('isRenewal').value = r.isRenewal ? '1' : '0';
+            document.getElementById('orderDate').value = r.orderDate;
+            document.getElementById('startDate').value = r.startDate;
+            document.getElementById('commercial').value = r.commercial;
+            document.getElementById('compulsory').value = r.compulsory;
+            document.getElementById('passenger').value = r.passenger;
+            document.getElementById('tax').value = r.tax;
+            document.getElementById('commFrontPct').value = r.frontPct;
+            document.getElementById('commTotalPct').value = r.totalPct;
+            document.getElementById('rebate').value = r.rebate || 0;
+            document.getElementById('remark').value = r.remark || '';
+
+            calculateAll();
+            openModal();
+        }
+
+        function deleteRecord(id) {
+            if (!confirm('确定删除这条记录吗？')) return;
+            records = records.filter(r => r.id !== id);
+            records.forEach((r, idx) => r.seq = records.length - idx);
+            localStorage.setItem('insuranceRecords', JSON.stringify(records));
+            renderTable();
+            updateStats();
+        }
+
+        function openModal() {
+            document.getElementById('modal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            if (!currentEditId) calculateAll();
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.add('hidden');
+            document.body.style.overflow = '';
+            currentEditId = null;
+            document.getElementById('modalTitle').textContent = '登记出单';
+            document.getElementById('entryForm').reset();
+            document.getElementById('ocrResultMsg').classList.add('hidden');
+            document.getElementById('rebate').value = 0;
+            document.getElementById('remark').value = '';
+            document.getElementById('orderDate').value = new Date().toISOString().split('T')[0];
+            calculateAll();
+        }
+
+        function exportExcel() {
+            const data = records.map(r => ({
+                序号: r.seq,
+                车牌: r.plate,
+                车主: r.owner,
+                车型: r.vehicleType,
+                是否续保: r.isRenewal ? '是' : '否',
+                出单日期: r.orderDate,
+                起保日期: r.startDate,
+                商业险: r.commercial,
+                交强险: r.compulsory,
+                驾乘险: r.passenger,
+                车船税: r.tax,
+                合计保费: r.totalPremium,
+                不含税保费: r.netPremium,
+                前端佣金: r.commission.front,
+                后端佣金: r.commission.back,
+                交强险佣金: r.commission.compulsory,
+                驾乘险佣金: r.commission.passenger,
+                佣金合计: r.commission.total
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "出单台账");
+            XLSX.writeFile(wb, `出单台账_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        document.getElementById('modal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('modal')) closeModal();
+        });
+    </script>
+</body>
+</html>
