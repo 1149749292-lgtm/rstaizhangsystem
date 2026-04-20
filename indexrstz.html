@@ -63,6 +63,12 @@
             <p class="text-xs text-gray-500" id="statsOverview">本月: 0单 | 保费: ¥0 | 利润: ¥0</p>
         </div>
         <div class="flex gap-2">
+            <button onclick="fetchCloudData()" class="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow active:scale-95 transition" title="从云端同步">
+                🔄 同步
+            </button>
+            <button onclick="saveCloudData()" class="bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow active:scale-95 transition" title="保存到云端">
+                💾 存云
+            </button>
             <button onclick="exportExcel()" class="bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow">
                 导出
             </button>
@@ -115,14 +121,24 @@
                             <th class="p-1 text-left text-xs" style="min-width:75px">车牌</th>
                             <th class="p-1 text-right text-xs" style="min-width:48px">商险</th>
                             <th class="p-1 text-right text-xs" style="min-width:48px">交强</th>
+                            <th class="p-1 text-right text-xs" style="min-width:48px">车船</th>
                             <th class="p-1 text-right text-xs" style="min-width:48px">驾乘</th>
-                            <th class="p-1 text-right text-xs" style="min-width:55px">合计</th>
+                            <th class="p-1 text-right text-xs font-bold" style="min-width:55px;border-right: 2px solid #9ca3af">合计</th>
+                            <th class="p-1 text-right text-xs" style="min-width:48px;color:#6b7280">商业税后</th>
+                            <th class="p-1 text-right text-xs" style="min-width:48px;color:#6b7280">交强税后</th>
+                            <th class="p-1 text-right text-xs" style="min-width:48px;color:#6b7280">驾乘税后</th>
+                            <th class="p-1 text-right text-xs font-bold" style="min-width:55px;color:#374151;border-right: 2px solid #9ca3af">三险净计</th>
                             <th class="p-1 text-right text-xs" style="min-width:45px;color:#2563eb">商前</th>
                             <th class="p-1 text-right text-xs" style="min-width:45px;color:#16a34a">交前</th>
                             <th class="p-1 text-right text-xs" style="min-width:45px;color:#ea580c">乘前</th>
+                            <th class="p-1 text-right text-xs font-bold" style="min-width:48px;color:#059669;border-right: 2px solid #9ca3af">前端合计</th>
                             <th class="p-1 text-right text-xs" style="min-width:45px;color:#7c3aed">商后</th>
-                            <th class="p-1 text-right text-xs" style="min-width:42px">返佣</th>
-                            <th class="p-1 text-right text-xs" style="min-width:42px">利润</th>
+                            <th class="p-1 text-right text-xs" style="min-width:45px;color:#0891b2">交后</th>
+                            <th class="p-1 text-right text-xs" style="min-width:45px;color:#84cc16">乘后</th>
+                            <th class="p-1 text-right text-xs font-bold" style="min-width:48px;color:#7c3aed;border-right: 2px solid #9ca3af">后端合计</th>
+                            <th class="p-1 text-right text-xs font-bold" style="min-width:48px;color:#059669">佣金</th>
+                            <th class="p-1 text-right text-xs" style="min-width:42px;color:#dc2626">返佣</th>
+                            <th class="p-1 text-right text-xs font-bold" style="min-width:42px;color:#16a34a">利润</th>
                             <th class="p-1 text-center text-xs" style="min-width:40px">操作</th>
                             <th class="p-1 text-left text-xs" style="min-width:35px">备注</th>
                         </tr>
@@ -303,6 +319,109 @@
     </div>
 
     <script>
+    // ==================== JSONBin.io 云端配置 ====================
+    const JSONBIN_CONFIG = {
+        MASTER_KEY: "$2a$10$42R1HUnhc8El3s8IEf4sO.j6KnDq9wF/7gkHB1trcltILhKXafovu",
+        BIN_ID: "69e57d6b856a68218950618a",
+        BASE_URL: "https://api.jsonbin.io/v3/b",
+        get URL() { return `${this.BASE_URL}/${this.BIN_ID}`; }
+    };
+
+    // 同步状态管理
+    let syncStatus = { loading: false, lastSync: null, error: null };
+
+    // 显示同步状态
+    function showSyncStatus(message, type = 'info') {
+        let statusEl = document.getElementById('syncStatus');
+        if (!statusEl) {
+            statusEl = document.createElement('div');
+            statusEl.id = 'syncStatus';
+            statusEl.className = 'fixed top-16 right-4 px-3 py-1 rounded text-xs font-bold z-50 transition-all';
+            document.body.appendChild(statusEl);
+        }
+        statusEl.textContent = message;
+        statusEl.className = `fixed top-16 right-4 px-3 py-1 rounded text-xs font-bold z-50 transition-all ${
+            type === 'success' ? 'bg-green-500 text-white' : 
+            type === 'error' ? 'bg-red-500 text-white' : 
+            type === 'loading' ? 'bg-blue-500 text-white' : 'bg-gray-500 text-white'
+        }`;
+        statusEl.style.display = 'block';
+        if (type !== 'loading') {
+            setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+        }
+    }
+
+    // 从云端获取数据
+    async function fetchCloudData() {
+        try {
+            showSyncStatus('正在同步...', 'loading');
+            const response = await fetch(`${JSONBIN_CONFIG.URL}/latest`, {
+                method: 'GET',
+                headers: {
+                    'X-Master-Key': JSONBIN_CONFIG.MASTER_KEY,
+                    'X-Bin-Meta': 'false'
+                },
+                cache: 'no-store'
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const result = await response.json();
+            const cloudData = result.record || result;
+
+            if (cloudData && cloudData.insuranceRecords && cloudData.insuranceRecords.length > 0) {
+                records = cloudData.insuranceRecords;
+                localStorage.setItem('insuranceRecords', JSON.stringify(records));
+                renderTable();
+                updateStats();
+                syncStatus.lastSync = new Date().toLocaleString();
+                showSyncStatus('同步成功!', 'success');
+                return true;
+            } else {
+                showSyncStatus('云端无数据，使用本地', 'info');
+                return false;
+            }
+        } catch (error) {
+            console.error('云端同步失败:', error);
+            showSyncStatus('同步失败，使用本地数据', 'error');
+            return false;
+        }
+    }
+
+    // 保存数据到云端
+    async function saveCloudData() {
+        try {
+            showSyncStatus('正在保存...', 'loading');
+            const dataToSave = {
+                insuranceRecords: records,
+                version: 'v12',
+                lastUpdated: new Date().toISOString()
+            };
+
+            const response = await fetch(JSONBIN_CONFIG.URL, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Master-Key': JSONBIN_CONFIG.MASTER_KEY,
+                    'X-Bin-Meta': 'false'
+                },
+                body: JSON.stringify(dataToSave),
+                cache: 'no-store'
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            syncStatus.lastSync = new Date().toLocaleString();
+            showSyncStatus('保存成功!', 'success');
+            return true;
+        } catch (error) {
+            console.error('云端保存失败:', error);
+            showSyncStatus('保存失败，已存本地', 'error');
+            return false;
+        }
+    }
+    // =============================================================
+
         let records = JSON.parse(localStorage.getItem('insuranceRecords') || '[]');
         let currentEditId = null;
         let abortController = null;
@@ -330,8 +449,9 @@
             });
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             initMonthFilter();
+            await fetchCloudData(); // 启动时从云端同步
             renderTable();
             updateStats();
             const today = new Date().toISOString().split('T')[0];
@@ -725,25 +845,29 @@
             const backPct = totalPct - frontPct;
             const commBack = netCommercial * (backPct / 100) * 0.94;
 
-            // 交强险佣金：只有前端（4%或2%）
-            let commCompulsory = netCompulsory * 0.04;
-            if (isRenewal || vehicleType === '货车') {
-                commCompulsory = netCompulsory * 0.02;
-            }
+            // 交强险佣金：前端（4%或2%）+ 后端（仅续保2%）
+            let compFrontRate = 0.04;
+            if (isRenewal || vehicleType === '货车') compFrontRate = 0.02;
+            const commCompulsoryFront = netCompulsory * compFrontRate;
+            // 交强险后端：仅续保有2%
+            let commCompulsoryBack = 0;
+            if (isRenewal) commCompulsoryBack = netCompulsory * 0.02;
 
-            // 驾乘险佣金：只有前端（35%）
-            const commPassenger = netPassenger * 0.35;
+            // 驾乘险佣金：前端（35%）+ 后端（默认0，可手动设置）
+            const commPassengerFront = netPassenger * 0.35;
+            const commPassengerBack = 0; // 默认0，除非特别设置
 
             // 汇总
-            const totalFront = commFront + commCompulsory + commPassenger;
-            const totalComm = totalFront + commBack;
+            const totalFront = commFront + commCompulsoryFront + commPassengerFront;
+            const totalBack = commBack + commCompulsoryBack + commPassengerBack;
+            const totalComm = totalFront + totalBack;
             const profit = totalComm - rebate;
 
             // 更新预览显示
             document.getElementById('previewCommFront').textContent = '¥' + commFront.toFixed(2);
             document.getElementById('previewCommBack').textContent = '¥' + commBack.toFixed(2);
-            document.getElementById('previewCompulsory').textContent = '¥' + commCompulsory.toFixed(2);
-            document.getElementById('previewPassenger').textContent = '¥' + commPassenger.toFixed(2);
+            document.getElementById('previewCompulsory').textContent = '¥' + commCompulsoryFront.toFixed(2);
+            document.getElementById('previewPassenger').textContent = '¥' + commPassengerFront.toFixed(2);
             document.getElementById('previewRebate').textContent = '¥' + rebate.toFixed(2);
             document.getElementById('previewProfit').textContent = '¥' + profit.toFixed(2);
             document.getElementById('previewTotalComm').textContent = '¥' + totalComm.toFixed(2);
@@ -752,8 +876,10 @@
             return { 
                 front: commFront,           // 商业险前端
                 back: commBack,             // 商业险后端
-                compulsory: commCompulsory, // 交强险前端
-                passenger: commPassenger, // 驾乘险前端
+                compulsoryFront: commCompulsoryFront, // 交强险前端
+                compulsoryBack: commCompulsoryBack,  // 交强险后端
+                passengerFront: commPassengerFront,    // 驾乘险前端
+                passengerBack: commPassengerBack,      // 驾乘险后端
                 total: totalComm,
                 totalFront: totalFront,
                 rebate: rebate, 
@@ -790,7 +916,7 @@
                 tax: tax,
                 frontPct: parseFloat(document.getElementById('commFrontPct').value) || 12,
                 totalPct: parseFloat(document.getElementById('commTotalPct').value) || 30,
-                commission: commission,
+                commission: commission, // 包含所有细分：front, back, compulsoryFront, compulsoryBack, passengerFront, passengerBack
                 totalPremium: commercial + compulsory + passenger + tax,
                 netPremium: (commercial + compulsory + passenger) / 1.06,
                 rebate: parseFloat(document.getElementById('rebate').value) || 0,
@@ -817,120 +943,205 @@
         }
 
         function renderTable() {
-            const tbody = document.getElementById('tableBody');
-            const empty = document.getElementById('emptyState');
-            const filterType = document.getElementById('filterType').value;
-            const filterMonth = document.getElementById('filterMonth').value;
-            const search = document.getElementById('searchInput').value.toLowerCase();
+    const tbody = document.getElementById('tableBody');
+    const empty = document.getElementById('emptyState');
+    const filterType = document.getElementById('filterType').value;
+    const filterMonth = document.getElementById('filterMonth').value;
+    const search = document.getElementById('searchInput').value.toLowerCase();
 
-            let filtered = records.filter(r => {
-                const matchType = !filterType || r.vehicleType === filterType;
-                const matchMonth = !filterMonth || (r.orderDate && r.orderDate.startsWith(filterMonth));
-                const matchSearch = !search || (r.plate && r.plate.toLowerCase().includes(search)) || 
-                                   (r.owner && r.owner.toLowerCase().includes(search));
-                return matchType && matchMonth && matchSearch;
-            });
+    let filtered = records.filter(r => {
+        const matchType = !filterType || r.vehicleType === filterType;
+        const matchMonth = !filterMonth || (r.orderDate && r.orderDate.startsWith(filterMonth));
+        const matchSearch = !search || (r.plate && r.plate.toLowerCase().includes(search)) || 
+                           (r.owner && r.owner.toLowerCase().includes(search));
+        return matchType && matchMonth && matchSearch;
+    });
 
-            if (filtered.length === 0) {
-                tbody.innerHTML = '';
-                empty.classList.remove('hidden');
-                return;
-            }
+    if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+    }
 
-            empty.classList.add('hidden');
+    empty.classList.add('hidden');
 
-            // 计算合计
-            let sumComm = 0, sumComp = 0, sumPass = 0, sumTotal = 0, sumTax = 0;
-            let sumFront = 0, sumCompFront = 0, sumPassFront = 0, sumBack = 0;
-            let sumRebate = 0, sumProfit = 0;
-            let sumCommNet = 0, sumCompNet = 0, sumPassNet = 0;
+    // 计算合计
+    let sumComm = 0, sumComp = 0, sumPass = 0, sumTax = 0, sumTotal = 0;
+    let sumCommNet = 0, sumCompNet = 0, sumPassNet = 0;
+    let sumFrontComm = 0, sumCompFront = 0, sumPassFront = 0;
+    let sumBackComm = 0, sumCompBack = 0, sumPassBack = 0;
+    let sumTotalComm = 0, sumRebate = 0, sumProfit = 0;
 
-            filtered.forEach(r => {
-                sumComm += r.commercial || 0;
-                sumComp += r.compulsory || 0;
-                sumPass += r.passenger || 0;
-                sumTax += r.tax || 0;
-                sumTotal += (r.commercial || 0) + (r.compulsory || 0) + (r.passenger || 0) + (r.tax || 0);
-                // 佣金细分汇总
-                sumFront += r.commission && r.commission.front ? r.commission.front : 0;
-                sumCompFront += r.commission && r.commission.compulsory ? r.commission.compulsory : 0;
-                sumPassFront += r.commission && r.commission.passenger ? r.commission.passenger : 0;
-                sumBack += r.commission && r.commission.back ? r.commission.back : 0;
-                sumRebate += r.rebate || 0;
-                const profit = (r.commission && r.commission.front ? r.commission.front : 0) + 
-                              (r.commission && r.commission.compulsory ? r.commission.compulsory : 0) + 
-                              (r.commission && r.commission.passenger ? r.commission.passenger : 0) + 
-                              (r.commission && r.commission.back ? r.commission.back : 0) - (r.rebate || 0);
-                sumProfit += profit;
-                // 净保费累计
-                sumCommNet += r.commercial ? (r.commercial / 1.06) : 0;
-                sumCompNet += r.compulsory ? (r.compulsory / 1.06) : 0;
-                sumPassNet += r.passenger ? (r.passenger / 1.06) : 0;
-            });
+    filtered.forEach(r => {
+        // 保费合计
+        sumComm += r.commercial || 0;
+        sumComp += r.compulsory || 0;
+        sumPass += r.passenger || 0;
+        sumTax += r.tax || 0;
+        sumTotal += (r.commercial || 0) + (r.compulsory || 0) + (r.passenger || 0) + (r.tax || 0);
 
-            tbody.innerHTML = filtered.map(r => {
-                const tagClass = r.vehicleType === '油车' ? 'tag-oil' : r.vehicleType === '货车' ? 'tag-truck' : 'tag-ev';
-                const renewalTag = r.isRenewal ? '<span class="tag tag-renewal ml-1">续</span>' : '';
+        // 净保费（税后）
+        const commNet = (r.commercial || 0) / 1.06;
+        const compNet = (r.compulsory || 0) / 1.06;
+        const passNet = (r.passenger || 0) / 1.06;
+        sumCommNet += commNet;
+        sumCompNet += compNet;
+        sumPassNet += passNet;
 
-                const commFront = r.commission && r.commission.front ? r.commission.front : 0;
-                const commBack = r.commission && r.commission.back ? r.commission.back : 0;
-                const rebate = r.rebate || 0;
-                const profit = commFront + commBack - rebate;
+        // 佣金计算
+        const frontPct = r.frontPct || 12;
+        const totalPct = r.totalPct || 30;
+        const isRenewal = r.isRenewal;
+        const vehicleType = r.vehicleType;
 
-                const commNet = r.commercial ? (r.commercial / 1.06) : 0;
-                const compNet = r.compulsory ? (r.compulsory / 1.06) : 0;
-                const passNet = r.passenger ? (r.passenger / 1.06) : 0;
-                const total = (r.commercial || 0) + (r.compulsory || 0) + (r.passenger || 0) + (r.tax || 0);
+        // 商业险前端
+        const commFront = commNet * (frontPct / 100);
+        // 商业险后端（总点数-前端，扣6%手续费）
+        const backPct = totalPct - frontPct;
+        const commBack = commNet * (backPct / 100) * 0.94;
 
-                return `
-                <tr class="table-row border-b border-gray-50 text-xs">
-                    <td class="p-1 font-medium">${r.seq}</td>
-                    <td class="p-1 text-gray-600">${r.orderDate ? r.orderDate.substring(5) : '-'}</td>
-                    <td class="p-1 text-gray-600">${r.startDate ? r.startDate.substring(5) : '-'}</td>
-                    <td class="p-1">
-                        <div class="font-bold text-gray-800 text-xs">${r.plate}</div>
-                        <div class="text-xs text-gray-500">${r.owner || '-'}</div>
-                        <div class="mt-1"><span class="tag ${tagClass}">${r.vehicleType}</span>${renewalTag}</div>
-                    </td>
-                    <td class="p-1 text-right text-gray-800">${r.commercial ? parseFloat(r.commercial).toString() : '0'}</td>
-                    <td class="p-1 text-right text-gray-800">${r.compulsory ? parseFloat(r.compulsory).toString() : '0'}</td>
-                    <td class="p-1 text-right text-gray-800">${r.tax ? parseFloat(r.tax).toString() : '0'}</td>
-                    <td class="p-1 text-right text-gray-800">${r.passenger ? parseFloat(r.passenger).toString() : '0'}</td>
-                    <td class="p-1 text-right font-bold text-gray-800">${total.toFixed(2)}</td>
-                    <td class="p-1 text-right text-gray-600">${commNet.toFixed(2)}</td>
-                    <td class="p-1 text-right text-gray-600">${compNet.toFixed(2)}</td>
-                    <td class="p-1 text-right text-gray-600">${passNet.toFixed(2)}</td>
-                    <td class="p-1 text-right text-blue-600">${commFront.toFixed(2)}</td>
-                    <td class="p-1 text-right text-purple-600">${commBack.toFixed(2)}</td>
-                    <td class="p-1 text-right text-orange-600">${rebate.toFixed(2)}</td>
-                    <td class="p-1 text-right font-bold text-green-600">${profit.toFixed(2)}</td>
-                    <td class="p-1 text-center">
-                        <button onclick="editRecord(${r.id})" class="text-blue-600 text-xs">编</button>
-                        <button onclick="deleteRecord(${r.id})" class="text-red-500 text-xs">删</button>
-                    </td>
-                    <td class="p-1 text-gray-500">${r.remark || ''}</td>
-                </tr>
-                `;
-            }).join('') + `
-                <tr class="bg-gray-100 font-bold text-xs border-t-2 border-gray-300">
-                    <td class="p-1" colspan="4">合计 (${filtered.length}单)</td>
-                    <td class="p-1 text-right">${sumComm.toFixed(0)}</td>
-                    <td class="p-1 text-right">${sumComp.toFixed(0)}</td>
-                    <td class="p-1 text-right">${sumTax.toFixed(0)}</td>
-                    <td class="p-1 text-right">${sumPass.toFixed(0)}</td>
-                    <td class="p-1 text-right">${sumTotal.toFixed(2)}</td>
-                    <td class="p-1 text-right">${sumCommNet.toFixed(2)}</td>
-                    <td class="p-1 text-right">${sumCompNet.toFixed(2)}</td>
-                    <td class="p-1 text-right">${sumPassNet.toFixed(2)}</td>
-                    <td class="p-1 text-right text-blue-700">${sumFront.toFixed(2)}</td>
-                    <td class="p-1 text-right text-purple-700">${sumBack.toFixed(2)}</td>
-                    <td class="p-1 text-right text-orange-700">${sumRebate.toFixed(2)}</td>
-                    <td class="p-1 text-right text-green-700">${sumProfit.toFixed(2)}</td>
-                    <td class="p-1"></td>
-                    <td class="p-1"></td>
-                </tr>
-            `;
-        }
+        // 交强险前端（4%或2%）
+        let compFrontRate = 0.04;
+        if (isRenewal || vehicleType === '货车') compFrontRate = 0.02;
+        const compFront = compNet * compFrontRate;
+        // 交强险后端（仅续保）
+        let compBack = 0;
+        if (isRenewal) compBack = compNet * 0.02;
+
+        // 驾乘险前端（35%）
+        const passFront = passNet * 0.35;
+        // 驾乘险后端（默认0，除非特别设置）
+        const passBack = (r.commission && r.commission.passengerBack) ? r.commission.passengerBack : 0;
+
+        // 汇总
+        const totalFront = commFront + compFront + passFront;
+        const totalBack = commBack + compBack + passBack;
+        const totalComm = totalFront + totalBack;
+        const rebate = r.rebate || 0;
+        const profit = totalComm - rebate;
+
+        sumFrontComm += commFront;
+        sumCompFront += compFront;
+        sumPassFront += passFront;
+        sumTotalFront = sumFrontComm + sumCompFront + sumPassFront;
+        sumBackComm += commBack;
+        sumCompBack += compBack;
+        sumPassBack += passBack;
+        sumTotalBack = sumBackComm + sumCompBack + sumPassBack;
+        sumTotalComm += totalComm;
+        sumRebate += rebate;
+        sumProfit += profit;
+    });
+
+    tbody.innerHTML = filtered.map(r => {
+        const tagClass = r.vehicleType === '油车' ? 'tag-oil' : r.vehicleType === '货车' ? 'tag-truck' : 'tag-ev';
+        const renewalTag = r.isRenewal ? '<span class="tag tag-renewal ml-1">续</span>' : '';
+
+        // 净保费
+        const commNet = (r.commercial || 0) / 1.06;
+        const compNet = (r.compulsory || 0) / 1.06;
+        const passNet = (r.passenger || 0) / 1.06;
+
+        // 保费合计
+        const total = (r.commercial || 0) + (r.compulsory || 0) + (r.passenger || 0) + (r.tax || 0);
+
+        // 佣金计算
+        const frontPct = r.frontPct || 12;
+        const totalPct = r.totalPct || 30;
+        const isRenewal = r.isRenewal;
+        const vehicleType = r.vehicleType;
+
+        // 商业险前端
+        const commFront = commNet * (frontPct / 100);
+        // 商业险后端
+        const backPct = totalPct - frontPct;
+        const commBack = commNet * (backPct / 100) * 0.94;
+
+        // 交强险前端
+        let compFrontRate = 0.04;
+        if (isRenewal || vehicleType === '货车') compFrontRate = 0.02;
+        const compFront = compNet * compFrontRate;
+        // 交强险后端
+        let compBack = 0;
+        if (isRenewal) compBack = compNet * 0.02;
+
+        // 驾乘险前端
+        const passFront = passNet * 0.35;
+        // 驾乘险后端（默认0）
+        const passBack = (r.commission && r.commission.passengerBack) ? r.commission.passengerBack : 0;
+
+        // 汇总
+        const totalFront = commFront + compFront + passFront;
+        const totalBack = commBack + compBack + passBack;
+        const totalComm = totalFront + totalBack;
+        const rebate = r.rebate || 0;
+        const profit = totalComm - rebate;
+
+        return `
+        <tr class="table-row border-b border-gray-50 text-xs">
+            <td class="p-1 font-medium">${r.seq}</td>
+            <td class="p-1 text-gray-600">${r.orderDate ? r.orderDate.substring(5) : '-'}</td>
+            <td class="p-1 text-gray-600">${r.startDate ? r.startDate.substring(5) : '-'}</td>
+            <td class="p-1">
+                <div class="font-bold text-gray-800 text-xs">${r.plate}</div>
+                <div class="text-xs text-gray-500">${r.owner || '-'}</div>
+                <div class="mt-1"><span class="tag ${tagClass}">${r.vehicleType}</span>${renewalTag}</div>
+            </td>
+            <td class="p-1 text-right text-gray-800">${r.commercial ? r.commercial.toFixed(0) : '0'}</td>
+            <td class="p-1 text-right text-gray-800">${r.compulsory ? r.compulsory.toFixed(0) : '0'}</td>
+            <td class="p-1 text-right text-gray-800">${r.tax ? r.tax.toFixed(0) : '0'}</td>
+            <td class="p-1 text-right text-gray-800">${r.passenger ? r.passenger.toFixed(0) : '0'}</td>
+            <td class="p-1 text-right font-bold text-gray-800" style="border-right: 2px solid #e5e7eb">${total.toFixed(0)}</td>
+            <td class="p-1 text-right text-gray-600">${commNet.toFixed(2)}</td>
+            <td class="p-1 text-right text-gray-600">${compNet.toFixed(2)}</td>
+            <td class="p-1 text-right text-gray-600">${passNet.toFixed(2)}</td>
+            <td class="p-1 text-right font-bold text-gray-700" style="border-right: 2px solid #e5e7eb">${(commNet + compNet + passNet).toFixed(2)}</td>
+            <td class="p-1 text-right text-blue-600">${commFront.toFixed(2)}</td>
+            <td class="p-1 text-right text-green-600">${compFront.toFixed(2)}</td>
+            <td class="p-1 text-right text-orange-600">${passFront.toFixed(2)}</td>
+            <td class="p-1 text-right font-bold text-green-600" style="border-right: 2px solid #e5e7eb">${(commFront + compFront + passFront).toFixed(2)}</td>
+            <td class="p-1 text-right text-purple-600">${commBack.toFixed(2)}</td>
+            <td class="p-1 text-right text-cyan-600">${compBack.toFixed(2)}</td>
+            <td class="p-1 text-right text-lime-600">${passBack.toFixed(2)}</td>
+            <td class="p-1 text-right font-bold text-purple-600" style="border-right: 2px solid #e5e7eb">${(commBack + compBack + passBack).toFixed(2)}</td>
+            <td class="p-1 text-right font-bold text-green-700">${totalComm.toFixed(2)}</td>
+            <td class="p-1 text-right text-red-600">${rebate.toFixed(2)}</td>
+            <td class="p-1 text-right font-bold text-green-600">${profit.toFixed(2)}</td>
+            <td class="p-1 text-center">
+                <button onclick="editRecord(${r.id})" class="text-blue-600 text-xs">编</button>
+                <button onclick="deleteRecord(${r.id})" class="text-red-500 text-xs">删</button>
+            </td>
+            <td class="p-1 text-gray-500">${r.remark || ''}</td>
+        </tr>
+        `;
+    }).join('') + `
+        <tr class="bg-gray-100 font-bold text-xs border-t-2 border-gray-300">
+            <td class="p-1" colspan="4">合计 (${filtered.length}单)</td>
+            <td class="p-1 text-right">${sumComm.toFixed(0)}</td>
+            <td class="p-1 text-right">${sumComp.toFixed(0)}</td>
+            <td class="p-1 text-right">${sumTax.toFixed(0)}</td>
+            <td class="p-1 text-right">${sumPass.toFixed(0)}</td>
+            <td class="p-1 text-right" style="border-right: 2px solid #d1d5db">${sumTotal.toFixed(0)}</td>
+            <td class="p-1 text-right">${sumCommNet.toFixed(2)}</td>
+            <td class="p-1 text-right">${sumCompNet.toFixed(2)}</td>
+            <td class="p-1 text-right">${sumPassNet.toFixed(2)}</td>
+            <td class="p-1 text-right font-bold" style="border-right: 2px solid #d1d5db">${(sumCommNet + sumCompNet + sumPassNet).toFixed(2)}</td>
+            <td class="p-1 text-right text-blue-700">${sumFrontComm.toFixed(2)}</td>
+            <td class="p-1 text-right text-green-700">${sumCompFront.toFixed(2)}</td>
+            <td class="p-1 text-right text-orange-700">${sumPassFront.toFixed(2)}</td>
+            <td class="p-1 text-right font-bold text-green-700" style="border-right: 2px solid #d1d5db">${(sumFrontComm + sumCompFront + sumPassFront).toFixed(2)}</td>
+            <td class="p-1 text-right text-purple-700">${sumBackComm.toFixed(2)}</td>
+            <td class="p-1 text-right text-cyan-700">${sumCompBack.toFixed(2)}</td>
+            <td class="p-1 text-right text-lime-700">${sumPassBack.toFixed(2)}</td>
+            <td class="p-1 text-right font-bold text-purple-700" style="border-right: 2px solid #d1d5db">${(sumBackComm + sumCompBack + sumPassBack).toFixed(2)}</td>
+            <td class="p-1 text-right text-green-800">${sumTotalComm.toFixed(2)}</td>
+            <td class="p-1 text-right text-red-700">${sumRebate.toFixed(2)}</td>
+            <td class="p-1 text-right text-green-800">${sumProfit.toFixed(2)}</td>
+            <td class="p-1"></td>
+            <td class="p-1"></td>
+        </tr>
+    `;
+}
 
         function updateStats() {
             const currentMonth = new Date().toISOString().substring(0, 7);
@@ -1027,26 +1238,75 @@
         }
 
         function exportExcel() {
-            const data = records.map(r => ({
-                序号: r.seq,
-                车牌: r.plate,
-                车主: r.owner,
-                车型: r.vehicleType,
-                是否续保: r.isRenewal ? '是' : '否',
-                出单日期: r.orderDate,
-                起保日期: r.startDate,
-                商业险: r.commercial,
-                交强险: r.compulsory,
-                驾乘险: r.passenger,
-                车船税: r.tax,
-                合计保费: r.totalPremium,
-                不含税保费: r.netPremium,
-                前端佣金: r.commission.front,
-                后端佣金: r.commission.back,
-                交强险佣金: r.commission.compulsory,
-                驾乘险佣金: r.commission.passenger,
-                佣金合计: r.commission.total
-            }));
+            const data = records.map(r => {
+                // 计算各险种净保费
+                const commNet = (r.commercial || 0) / 1.06;
+                const compNet = (r.compulsory || 0) / 1.06;
+                const passNet = (r.passenger || 0) / 1.06;
+
+                // 佣金计算逻辑（与表格显示一致）
+                const frontPct = r.frontPct || 12;
+                const totalPct = r.totalPct || 30;
+                const isRenewal = r.isRenewal;
+                const vehicleType = r.vehicleType;
+
+                // 商业险前端
+                const commFront = commNet * (frontPct / 100);
+                // 商业险后端
+                const backPct = totalPct - frontPct;
+                const commBack = commNet * (backPct / 100) * 0.94;
+
+                // 交强险前端
+                let compFrontRate = 0.04;
+                if (isRenewal || vehicleType === '货车') compFrontRate = 0.02;
+                const compFront = compNet * compFrontRate;
+                // 交强险后端
+                let compBack = 0;
+                if (isRenewal) compBack = compNet * 0.02;
+
+                // 驾乘险前端
+                const passFront = passNet * 0.35;
+                // 驾乘险后端（默认0）
+                const passBack = (r.commission && r.commission.passengerBack) ? r.commission.passengerBack : 0;
+
+                // 汇总
+                const totalFront = commFront + compFront + passFront;
+                const totalBack = commBack + compBack + passBack;
+                const totalComm = totalFront + totalBack;
+                const rebate = r.rebate || 0;
+                const profit = totalComm - rebate;
+
+                return {
+                    序号: r.seq,
+                    车牌: r.plate,
+                    车主: r.owner,
+                    车型: r.vehicleType,
+                    是否续保: r.isRenewal ? '是' : '否',
+                    出单日期: r.orderDate,
+                    起保日期: r.startDate,
+                    商业险: r.commercial,
+                    交强险: r.compulsory,
+                    车船税: r.tax,
+                    驾乘险: r.passenger,
+                    合计保费: r.totalPremium,
+                    商业税后: commNet.toFixed(2),
+                    交强税后: compNet.toFixed(2),
+                    驾乘税后: passNet.toFixed(2),
+                    三险净合计: (commNet + compNet + passNet).toFixed(2),
+                    商业前端: commFront.toFixed(2),
+                    交强前端: compFront.toFixed(2),
+                    驾乘前端: passFront.toFixed(2),
+                    前端合计: (commFront + compFront + passFront).toFixed(2),
+                    商业后端: commBack.toFixed(2),
+                    交强后端: compBack.toFixed(2),
+                    驾乘后端: passBack.toFixed(2),
+                    后端合计: (commBack + compBack + passBack).toFixed(2),
+                    佣金合计: totalComm.toFixed(2),
+                    返佣: rebate.toFixed(2),
+                    利润: profit.toFixed(2),
+                    备注: r.remark
+                };
+            });
 
             const ws = XLSX.utils.json_to_sheet(data);
             const wb = XLSX.utils.book_new();
